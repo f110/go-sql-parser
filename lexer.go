@@ -42,6 +42,9 @@ func (ctx *lexerCtx) peek() (rune, error) {
 	if err != nil {
 		return 0, err
 	}
+	if isLineBreak(rune(b[0])) {
+		ctx.line++
+	}
 	return rune(b[0]), err
 }
 
@@ -81,6 +84,9 @@ func (lexer *Lexer) Scan() (Token, error) {
 		r = b
 
 		if isWhiteSpace(r) {
+			lexer.ctx.discard()
+			continue
+		} else if isLineBreak(r) {
 			lexer.ctx.discard()
 			continue
 		} else {
@@ -190,6 +196,19 @@ func (lexer *Lexer) scanStatement(ctx *lexerCtx, s rune) (TokenType, interface{}
 				return GROUPBY, nil
 			}
 		}
+	case "primary":
+		ctx.skipWhiteSpace()
+		b, err := ctx.r.Peek(3)
+		if err == io.EOF {
+			ctx.cur += 3
+			ctx.r.Discard(3)
+			return ILLEGAL, nil
+		}
+		if string(b) == "key" {
+			ctx.cur += 3
+			ctx.r.Discard(3)
+			return PRIMARYKEY, nil
+		}
 	case "desc":
 		return DESC, nil
 	case "asc":
@@ -230,6 +249,20 @@ func (lexer *Lexer) scanStatement(ctx *lexerCtx, s rune) (TokenType, interface{}
 		return ADD, nil
 	case "column":
 		return COLUMN, nil
+	case "serial":
+		return SERIAL, nil
+	case "references":
+		return REFERENCE, nil
+	case "default":
+		return DEFAULT, nil
+	case "varchar":
+		return VARCHAR, nil
+	case "int":
+		return INTEGER, nil
+	case "unique":
+		return UNIQUE, nil
+	case "null":
+		return NULL, nil
 	default:
 		if i, err := strconv.Atoi(state); err == nil {
 			return INT, i
@@ -242,6 +275,13 @@ func (lexer *Lexer) scanStatement(ctx *lexerCtx, s rune) (TokenType, interface{}
 
 func isWhiteSpace(r rune) bool {
 	if r == ' ' {
+		return true
+	}
+	return false
+}
+
+func isLineBreak(r rune) bool {
+	if r == '\n' {
 		return true
 	}
 	return false
