@@ -36,7 +36,7 @@ func assertQuery(t *testing.T, query string, tokens []Token) {
 }
 
 func TestLexer_Scan(t *testing.T) {
-	t.Run("TestLexer_Scan_SELECT", func(t *testing.T) {
+	t.Run("SELECT", func(t *testing.T) {
 		t.Parallel()
 
 		cases := []struct {
@@ -209,7 +209,7 @@ func TestLexer_Scan(t *testing.T) {
 		}
 	})
 
-	t.Run("TestLexer_Scan_UPDATE", func(t *testing.T) {
+	t.Run("UPDATE", func(t *testing.T) {
 		t.Parallel()
 
 		cases := []struct {
@@ -239,7 +239,7 @@ func TestLexer_Scan(t *testing.T) {
 		}
 	})
 
-	t.Run("TestLexer_Scan_CREATE", func(t *testing.T) {
+	t.Run("CREATE", func(t *testing.T) {
 		t.Parallel()
 
 		cases := []struct {
@@ -357,7 +357,7 @@ file varchar(20) check(file = "foo"))`,
 		}
 	})
 
-	t.Run("TestLexer_Scan_ALTER", func(t *testing.T) {
+	t.Run("ALTER", func(t *testing.T) {
 		t.Parallel()
 
 		cases := []struct {
@@ -387,7 +387,7 @@ file varchar(20) check(file = "foo"))`,
 		}
 	})
 
-	t.Run("TestLexer_Scan_INSERT", func(t *testing.T) {
+	t.Run("INSERT", func(t *testing.T) {
 		t.Parallel()
 
 		cases := []struct {
@@ -400,7 +400,7 @@ file varchar(20) check(file = "foo"))`,
 					{Type: INSERT, Position: Position{Line: 1, Offset: 0, Column: 6}},
 					{Type: INTO, Position: Position{Line: 1, Offset: 7, Column: 4}},
 					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 12, Column: 5}},
-					{Type: VALUES, Position: Position{Line: 1, Offset: 18, Column: 6}},
+					{Type: IDENT, Value: "values", Position: Position{Line: 1, Offset: 18, Column: 6}},
 					{Type: LPAREN, Position: Position{Line: 1, Offset: 25, Column: 1}},
 					{Type: INT, IntValue: 1, Position: Position{Line: 1, Offset: 26, Column: 1}},
 					{Type: COMMA, Position: Position{Line: 1, Offset: 27, Column: 1}},
@@ -420,13 +420,65 @@ file varchar(20) check(file = "foo"))`,
 					{Type: COMMA, Position: Position{Line: 1, Offset: 21, Column: 1}},
 					{Type: IDENT, Value: "name", Position: Position{Line: 1, Offset: 23, Column: 4}},
 					{Type: RPAREN, Position: Position{Line: 1, Offset: 27, Column: 1}},
-					{Type: VALUES, Position: Position{Line: 1, Offset: 29, Column: 6}},
+					{Type: IDENT, Value: "values", Position: Position{Line: 1, Offset: 29, Column: 6}},
 					{Type: LPAREN, Position: Position{Line: 1, Offset: 36, Column: 1}},
 					{Type: INT, IntValue: 1, Position: Position{Line: 1, Offset: 37, Column: 1}},
 					{Type: COMMA, Position: Position{Line: 1, Offset: 38, Column: 1}},
 					{Type: IDENT, Value: "\"test\"", Position: Position{Line: 1, Offset: 40, Column: 6}},
 					{Type: RPAREN, Position: Position{Line: 1, Offset: 46, Column: 1}},
 					{Type: EOF, Position: Position{Line: 1, Offset: 47}},
+				},
+			},
+			{
+				"insert into users (id, name) values (1, \"test\"), (2, \"foo\")",
+				[]Token{
+					{Type: INSERT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+					{Type: INTO, Position: Position{Line: 1, Offset: 7, Column: 4}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 12, Column: 5}},
+					{Type: LPAREN, Position: Position{Line: 1, Offset: 18, Column: 1}},
+					{Type: IDENT, Value: "id", Position: Position{Line: 1, Offset: 19, Column: 2}},
+					{Type: COMMA, Position: Position{Line: 1, Offset: 21, Column: 1}},
+					{Type: IDENT, Value: "name", Position: Position{Line: 1, Offset: 23, Column: 4}},
+					{Type: RPAREN, Position: Position{Line: 1, Offset: 27, Column: 1}},
+					{Type: IDENT, Value: "values", Position: Position{Line: 1, Offset: 29, Column: 6}},
+					{Type: LPAREN, Position: Position{Line: 1, Offset: 36, Column: 1}},
+					{Type: INT, IntValue: 1, Position: Position{Line: 1, Offset: 37, Column: 1}},
+					{Type: COMMA, Position: Position{Line: 1, Offset: 38, Column: 1}},
+					{Type: IDENT, Value: "\"test\"", Position: Position{Line: 1, Offset: 40, Column: 6}},
+					{Type: RPAREN, Position: Position{Line: 1, Offset: 46, Column: 1}},
+					{Type: COMMA, Position: Position{Line: 1, Offset: 47, Column: 1}},
+					{Type: LPAREN, Position: Position{Line: 1, Offset: 49, Column: 1}},
+					{Type: INT, IntValue: 2, Position: Position{Line: 1, Offset: 50, Column: 1}},
+					{Type: COMMA, Position: Position{Line: 1, Offset: 51, Column: 1}},
+					{Type: IDENT, Value: "\"foo\"", Position: Position{Line: 1, Offset: 53, Column: 5}},
+					{Type: RPAREN, Position: Position{Line: 1, Offset: 58, Column: 1}},
+					{Type: EOF, Position: Position{Line: 1, Offset: 59}},
+				},
+			},
+			{
+				"insert into users (id, name) values (1, \"test\") on duplicate key update name = values(name)",
+				[]Token{
+					{Type: INSERT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+					{Type: INTO, Position: Position{Line: 1, Offset: 7, Column: 4}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 12, Column: 5}},
+					{Type: LPAREN, Position: Position{Line: 1, Offset: 18, Column: 1}},
+					{Type: IDENT, Value: "id", Position: Position{Line: 1, Offset: 19, Column: 2}},
+					{Type: COMMA, Position: Position{Line: 1, Offset: 21, Column: 1}},
+					{Type: IDENT, Value: "name", Position: Position{Line: 1, Offset: 23, Column: 4}},
+					{Type: RPAREN, Position: Position{Line: 1, Offset: 27, Column: 1}},
+					{Type: IDENT, Value: "values", Position: Position{Line: 1, Offset: 29, Column: 6}},
+					{Type: LPAREN, Position: Position{Line: 1, Offset: 36, Column: 1}},
+					{Type: INT, IntValue: 1, Position: Position{Line: 1, Offset: 37, Column: 1}},
+					{Type: COMMA, Position: Position{Line: 1, Offset: 38, Column: 1}},
+					{Type: IDENT, Value: "\"test\"", Position: Position{Line: 1, Offset: 40, Column: 6}},
+					{Type: RPAREN, Position: Position{Line: 1, Offset: 46, Column: 1}},
+					{Type: ONDUPLICATEKEYUPDATE, Position: Position{Line: 1, Offset: 48, Column: 23}},
+					{Type: IDENT, Value: "name", Position: Position{Line: 1, Offset: 72, Column: 4}},
+					{Type: EQUAL, Position: Position{Line: 1, Offset: 77, Column: 1}},
+					{Type: IDENT, Value: "values", Position: Position{Line: 1, Offset: 79, Column: 6}},
+					{Type: LPAREN, Position: Position{Line: 1, Offset: 85, Column: 1}},
+					{Type: IDENT, Value: "name", Position: Position{Line: 1, Offset: 86, Column: 4}},
+					{Type: RPAREN, Position: Position{Line: 1, Offset: 90, Column: 1}},
 				},
 			},
 		}

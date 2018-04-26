@@ -226,9 +226,48 @@ func (lexer *Lexer) scanStatement(ctx *lexerCtx, s rune) (TokenType, interface{}
 	case "join":
 		return JOIN, nil
 	case "on":
-		return ON, nil
-	case "values":
-		return VALUES, nil
+		b, err := ctx.r.Peek(4)
+		if err == io.EOF {
+			ctx.cur += 4
+			ctx.r.Discard(4)
+			return ILLEGAL, nil
+		}
+		if string(b) == " dup" {
+			ctx.cur += 10
+			ctx.r.Discard(10)
+		} else {
+			return ON, nil
+		}
+		ctx.skipWhiteSpace()
+		b, err = ctx.r.Peek(3)
+		if err == io.EOF {
+			ctx.cur += 3
+			ctx.r.Discard(3)
+			return ILLEGAL, nil
+		}
+		if string(b) != "key" {
+			ctx.cur += 3
+			ctx.r.Discard(3)
+			return ILLEGAL, nil
+		}
+		ctx.cur += 3
+		ctx.r.Discard(3)
+
+		ctx.skipWhiteSpace()
+		b, err = ctx.r.Peek(6)
+		if err == io.EOF {
+			ctx.cur += 6
+			ctx.r.Discard(6)
+			return ILLEGAL, nil
+		}
+		if string(b) != "update" {
+			ctx.cur += 6
+			ctx.r.Discard(6)
+			return ILLEGAL, nil
+		}
+		ctx.cur += 6
+		ctx.r.Discard(6)
+		return ONDUPLICATEKEYUPDATE, nil
 	case "database":
 		return DATABASE, nil
 	case "table":
