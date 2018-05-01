@@ -7,28 +7,18 @@ import (
 	"testing"
 )
 
-func assertTokens(expected []Token, actual []Token) bool {
-	for i, e := range expected {
-		if e.Type != actual[i].Type {
-			return false
-		}
-
-		switch e.Type {
-		case IDENT:
-			if e.Value != actual[i].Value {
-				return false
-			}
-		case INT:
-			if e.IntValue != actual[i].IntValue {
-				return false
-			}
-		}
-	}
+func assertOrderByClause(t *testing.T, expected OrderByClause, actual OrderByClause, i int) {
 	if len(expected) != len(actual) {
-		return false
+		t.Fatalf("tokens %d: Expected length %d, but actual %d", i, len(expected), len(actual))
 	}
-
-	return true
+	for i, e := range expected {
+		if e.Key.Value != actual[i].Key.Value {
+			t.Fatalf("tokens %d: Expected key %s, but got %s", i, e.Key.Value, actual[i].Key.Value)
+		}
+		if e.Order.Type != ILLEGAL && e.Order.Type != actual[i].Order.Type {
+			t.Fatalf("tokens %d: Expected order %v, but actual %v", i, e.Order.Type, actual[i].Key.Type)
+		}
+	}
 }
 
 func assertWhereClause(t *testing.T, expected WhereClause, actual WhereClause, i int) {
@@ -96,6 +86,12 @@ func assertToken(t *testing.T, expected Token, actual Token) {
 	}
 }
 
+func assertTokens(t *testing.T, expected Tokens, actual Tokens) {
+	for i, e := range expected {
+		assertToken(t, e, actual[i])
+	}
+}
+
 func TestParser_Parse(t *testing.T) {
 	t.Run("Select", func(t *testing.T) {
 		cases := []struct {
@@ -153,8 +149,8 @@ func TestParser_Parse(t *testing.T) {
 						},
 						Where: WhereClause{Cond: &ValueExpr{
 							Operator:   Token{Type: EQUAL},
-							LeftValue:  Tokens([]Token{{Type: IDENT, Value: "id"}}),
-							RightValue: Tokens([]Token{{Type: INT, IntValue: 1}}),
+							LeftValue:  []Token{{Type: IDENT, Value: "id"}},
+							RightValue: []Token{{Type: INT, IntValue: 1}},
 						}},
 					},
 					SelectList: []Token{{Type: ASTERISK}}},
@@ -199,6 +195,29 @@ func TestParser_Parse(t *testing.T) {
 					SelectList: []Token{{Type: ASTERISK}},
 				},
 			},
+			{
+				Tokens: []Token{ // select * from users order by created_date desc, rank
+					{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+					{Type: ASTERISK, Position: Position{Line: 1, Offset: 7, Column: 1}},
+					{Type: FROM, Position: Position{Line: 1, Offset: 9, Column: 4}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 14, Column: 5}},
+					{Type: ORDERBY, Position: Position{Line: 1, Offset: 20, Column: 8}},
+					{Type: IDENT, Value: "created_date", Position: Position{Line: 1, Offset: 29, Column: 12}},
+					{Type: DESC, Position: Position{Line: 1, Offset: 42, Column: 4}},
+					{Type: COMMA, Position: Position{Line: 1, Offset: 46, Column: 1}},
+					{Type: IDENT, Value: "rank", Position: Position{Line: 1, Offset: 48, Column: 4}},
+					{Type: EOF, Position: Position{Line: 1, Offset: 52}},
+				},
+				Select: Select{
+					Table: TableExpression{
+						From: FromClause{
+							Table: []Token{{Type: IDENT, Value: "users"}},
+						},
+						Where: WhereClause{},
+					},
+					OrderBy: []*SortSpecification{{Key: Token{Type: IDENT, Value: "created_date"}, Order: Token{Type: DESC}}, {Key: Token{Type: IDENT, Value: "rank"}}},
+				},
+			},
 		}
 
 		parser := Parser{}
@@ -213,13 +232,10 @@ func TestParser_Parse(t *testing.T) {
 				t.Fatalf("tokens %d, Expected Select but not", i)
 			}
 
-			if !assertTokens(s.Table.From.Table, c.Select.Table.From.Table) {
-				t.Fatalf("tokens %d, Expected from %v but actual %v", i, c.Select.Table.From.Table, s.Table.From.Table)
-			}
-			if !assertTokens(s.SelectList, c.Select.SelectList) {
-				t.Fatalf("tokens %d, Expected colums %v but actual %v", i, c.Select.SelectList, s.SelectList)
-			}
+			assertTokens(t, Tokens(c.Select.Table.From.Table), Tokens(s.Table.From.Table))
+			assertTokens(t, Tokens(c.Select.SelectList), Tokens(s.SelectList))
 			assertWhereClause(t, c.Select.Table.Where, s.Table.Where, i)
+			assertOrderByClause(t, c.Select.OrderBy, s.OrderBy, i)
 		}
 	})
 }
@@ -232,9 +248,9 @@ func TestParser_parseExpression(t *testing.T) {
 	//var tokens = []Token{{Type: IDENT, Value: "A"}, {Type: AND}, {Type: LPAREN}, {Type: IDENT, Value: "B"}, {Type: AND}, {Type: IDENT, Value: "C"}, {Type: RPAREN}} // invalid
 	//var tokens = []Token{{Type: LPAREN}, {Type: IDENT, Value: "B"}, {Type: OR}, {Type: IDENT, Value: "C"}, {Type: RPAREN}, {Type: AND}, {Type: IDENT, Value: "D"}}
 	//var tokens = []Token{{Type: IDENT, Value: "A"}, {Type: AND}, {Type: LPAREN}, {Type: LPAREN}, {Type: IDENT, Value: "B"}, {Type: OR}, {Type: IDENT, Value: "C"}, {Type: RPAREN}, {Type: AND}, {Type: IDENT, Value: "D"}, {Type: RPAREN}}
-	var tokens = []Token{{Type: IDENT, Value: "id"}, {Type: EQUAL}, {Type: INT, IntValue: 1}}
+	var tokens = []Token{{Type: IDENT, Value: "id"}, {Type: EQUAL}, {Type: INT, IntValue: 1}, {Type: AND}, {Type: IDENT, Value: "age"}, {Type: EQUAL}, {Type: INT, IntValue: 20}}
 
 	parser := Parser{}
 	res, _ := parser.parseSearchCondition(NewTokensReader(tokens))
-	log.Print(res.(*ValueExpr).LeftValue)
+	log.Print(res.(*BooleanTerm))
 }

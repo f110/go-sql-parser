@@ -220,6 +220,21 @@ func TestLexer_Scan(t *testing.T) {
 					{Type: EOF, Position: Position{Line: 1, Offset: 27}},
 				},
 			},
+			{
+				"select * from users order by created_date desc, rank",
+				[]Token{
+					{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+					{Type: ASTERISK, Position: Position{Line: 1, Offset: 7, Column: 1}},
+					{Type: FROM, Position: Position{Line: 1, Offset: 9, Column: 4}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 14, Column: 5}},
+					{Type: ORDERBY, Position: Position{Line: 1, Offset: 20, Column: 8}},
+					{Type: IDENT, Value: "created_date", Position: Position{Line: 1, Offset: 29, Column: 12}},
+					{Type: DESC, Position: Position{Line: 1, Offset: 42, Column: 4}},
+					{Type: COMMA, Position: Position{Line: 1, Offset: 46, Column: 1}},
+					{Type: IDENT, Value: "rank", Position: Position{Line: 1, Offset: 48, Column: 4}},
+					{Type: EOF, Position: Position{Line: 1, Offset: 52}},
+				},
+			},
 		}
 
 		for _, c := range cases {

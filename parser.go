@@ -55,6 +55,14 @@ type Query interface{}
 type Select struct {
 	SelectList SelectList
 	Table      TableExpression
+	OrderBy    OrderByClause
+}
+
+type OrderByClause []*SortSpecification
+
+type SortSpecification struct {
+	Key   Token
+	Order Token
 }
 
 type SelectList []Token
@@ -74,11 +82,15 @@ type WhereClause struct {
 	Cond Expr
 }
 
-type GroupByClause struct{}
+type GroupByClause struct {
+	Columns ColumnsList
+}
 
 type HavingClause struct{}
 
-type TableList []Token
+type ColumnsList Tokens
+
+type TableList Tokens
 
 type Expr interface{}
 
@@ -90,13 +102,6 @@ type BooleanTerm struct {
 	Right   Expr
 }
 
-const (
-	BooleanOperatorAnd BooleanOperator = iota
-	BooleanOperatorOr
-)
-
-type BooleanOperator int
-
 type ValueExpr struct {
 	Operator   Token
 	LeftValue  Expr
@@ -106,17 +111,6 @@ type ValueExpr struct {
 type RawValue struct {
 	Token Token
 }
-
-const (
-	OperatorEqual ComparisonOperator = iota
-	OperatorNotEqual
-	OperatorLess
-	OperatorGreater
-	OperatorLessOrEqual
-	OperatorGreatherOrEqual
-)
-
-type ComparisonOperator int
 
 type Parser struct{}
 
@@ -154,8 +148,58 @@ func (p *Parser) parseSelect(tokens TokenReader) (Query, error) {
 		return nil, err
 	}
 	query.Table = tableExpression
+	if err == io.EOF {
+		return query, nil
+	}
+
+	orderByClause, err := p.parseOrderByClause(tokens)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	query.OrderBy = orderByClause
 
 	return query, nil
+}
+
+func (p *Parser) parseOrderByClause(tokens TokenReader) (OrderByClause, error) {
+	if t, err := tokens.Peek(1); err != nil || t[0].Type != ORDERBY {
+		return OrderByClause{}, nil
+	} else {
+		tokens.Discard(1)
+	}
+
+	res := make([]*SortSpecification, 0)
+	left := make(Tokens, 0, 2)
+	for {
+		t, err := tokens.Peek(1)
+		if err != nil && err != io.EOF {
+			return OrderByClause{}, nil
+		}
+		if err == io.EOF {
+			res = append(res, p.parseSortSpecification(left))
+			break
+		}
+
+		tokens.Discard(1)
+		switch t[0].Type {
+		case COMMA:
+			res = append(res, p.parseSortSpecification(left))
+			left = make(Tokens, 0, 2)
+			continue
+		default:
+			left = append(left, t[0])
+		}
+	}
+
+	return OrderByClause(res), nil
+}
+
+func (p *Parser) parseSortSpecification(t []Token) *SortSpecification {
+	s := &SortSpecification{Key: t[0]}
+	if len(t) > 1 {
+		s.Order = t[1]
+	}
+	return s
 }
 
 func (p *Parser) parseSelectList(tokens TokenReader) (SelectList, error) {
@@ -192,7 +236,7 @@ func (p *Parser) parseTableExpression(tokens TokenReader) (TableExpression, erro
 	}
 	tableExpression := &TableExpression{From: fromClause}
 
-	if _, err := tokens.Peek(1); err == nil {
+	if t, err := tokens.Peek(1); err == nil && t[0].Type == WHERE {
 		var whereClause WhereClause
 
 		whereClause, err = p.parseWhereClause(tokens)
@@ -213,6 +257,7 @@ func (p *Parser) parseFromClause(tokens TokenReader) (FromClause, error) {
 	}
 
 	tableList := make(TableList, 0)
+TableList:
 	for {
 		t, err := tokens.Peek(1)
 		if err != nil && err != io.EOF {
@@ -221,8 +266,9 @@ func (p *Parser) parseFromClause(tokens TokenReader) (FromClause, error) {
 		if err == io.EOF {
 			break
 		}
-		if t[0].Type == WHERE {
-			break
+		switch t[0].Type {
+		case WHERE, ORDERBY:
+			break TableList
 		}
 
 		tokens.Discard(1)
@@ -283,14 +329,23 @@ func (p *Parser) parseSearchCondition(tokens TokenReader) (Expr, error) {
 
 			l, err := p.parseSearchCondition(NewTokensReader(removeRedundantParen(left)))
 			tokens.Discard(1)
+
 			least := make(Tokens, 0)
+		Skip:
 			for {
-				t, err := tokens.Scan()
+				t, err := tokens.Peek(1)
 				if err == io.EOF {
 					break
 				}
-				least = append(least, t)
+
+				switch t[0].Type {
+				case ORDERBY, GROUPBY:
+					break Skip
+				}
+				tokens.Discard(1)
+				least = append(least, t[0])
 			}
+
 			r, err := p.parseSearchCondition(NewTokensReader(removeRedundantParen(least)))
 			_ = err
 			b := &BooleanTerm{
