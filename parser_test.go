@@ -7,6 +7,22 @@ import (
 	"testing"
 )
 
+func assertGroupByClause(t *testing.T, expected GroupByClause, actual GroupByClause, i int) {
+	if len(expected) != len(actual) {
+		t.Fatalf("tokens %d: Expected length %d, but actual %d", i, len(expected), len(actual))
+	}
+
+	for i, e := range expected {
+		if e.Value != actual[i].Value {
+			t.Fatalf("tokens %d: Expected %s, but got %s", i, e.Value, actual[i].Value)
+		}
+	}
+}
+
+func assertHavingClause(t *testing.T, expected HavingClause, actual HavingClause, i int) {
+	assertExpr(t, expected.Cond, actual.Cond, i)
+}
+
 func assertOrderByClause(t *testing.T, expected OrderByClause, actual OrderByClause, i int) {
 	if len(expected) != len(actual) {
 		t.Fatalf("tokens %d: Expected length %d, but actual %d", i, len(expected), len(actual))
@@ -21,16 +37,20 @@ func assertOrderByClause(t *testing.T, expected OrderByClause, actual OrderByCla
 	}
 }
 
+func assertExpr(t *testing.T, expected Expr, actual Expr, i int) {
+	if reflect.TypeOf(expected) != reflect.TypeOf(actual) {
+		t.Fatalf("tokens %d: Expected %v, but actual %v", i, reflect.TypeOf(expected), reflect.TypeOf(actual))
+	}
+	if v, ok := expected.(*ValueExpr); ok {
+		assertValueExpr(t, v, actual.(*ValueExpr))
+	}
+	if v, ok := expected.(*BooleanTerm); ok {
+		assertBooleanTerm(t, v, actual.(*BooleanTerm))
+	}
+}
+
 func assertWhereClause(t *testing.T, expected WhereClause, actual WhereClause, i int) {
-	if reflect.TypeOf(expected.Cond) != reflect.TypeOf(actual.Cond) {
-		t.Fatalf("tokens %d: Expected %v, but actual %v", i, reflect.TypeOf(expected.Cond), reflect.TypeOf(actual.Cond))
-	}
-	if v, ok := expected.Cond.(*ValueExpr); ok {
-		assertValueExpr(t, v, actual.Cond.(*ValueExpr))
-	}
-	if v, ok := expected.Cond.(*BooleanTerm); ok {
-		assertBooleanTerm(t, v, actual.Cond.(*BooleanTerm))
-	}
+	assertExpr(t, expected.Cond, actual.Cond, i)
 }
 
 func assertValueExpr(t *testing.T, expected *ValueExpr, actual *ValueExpr) {
@@ -196,6 +216,46 @@ func TestParser_Parse(t *testing.T) {
 				},
 			},
 			{
+				Tokens: []Token{ // select * from users where id > 10 and age > 20
+					{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+					{Type: ASTERISK, Position: Position{Line: 1, Offset: 7, Column: 1}},
+					{Type: FROM, Position: Position{Line: 1, Offset: 9, Column: 4}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 14, Column: 5}},
+					{Type: WHERE, Position: Position{Line: 1, Offset: 20, Column: 5}},
+					{Type: IDENT, Value: "id", Position: Position{Line: 1, Offset: 26, Column: 2}},
+					{Type: GTR, Position: Position{Line: 1, Offset: 29, Column: 1}},
+					{Type: INT, IntValue: 10, Position: Position{Line: 1, Offset: 31, Column: 2}},
+					{Type: AND, Position: Position{Line: 1, Offset: 34, Column: 3}},
+					{Type: IDENT, Value: "age", Position: Position{Line: 1, Offset: 38, Column: 3}},
+					{Type: GTR, Position: Position{Line: 1, Offset: 42, Column: 1}},
+					{Type: INT, IntValue: 20, Position: Position{Line: 1, Offset: 44, Column: 2}},
+					{Type: EOF, Position: Position{Line: 1, Offset: 46}},
+				},
+				Select: Select{
+					Table: TableExpression{
+						From: FromClause{
+							Table: []Token{{Type: IDENT, Value: "users"}},
+						},
+						Where: WhereClause{
+							Cond: &BooleanTerm{
+								Boolean: Token{Type: AND},
+								Left: &ValueExpr{
+									Operator:   Token{Type: GTR},
+									LeftValue:  []Token{{Type: IDENT, Value: "id"}},
+									RightValue: []Token{{Type: INT, IntValue: 1}},
+								},
+								Right: &ValueExpr{
+									Operator:   Token{Type: GTR},
+									LeftValue:  []Token{{Type: IDENT, Value: "age"}},
+									RightValue: []Token{{Type: INT, IntValue: 20}},
+								},
+							},
+						},
+					},
+					SelectList: []Token{{Type: ASTERISK}},
+				},
+			},
+			{
 				Tokens: []Token{ // select * from users order by created_date desc, rank
 					{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
 					{Type: ASTERISK, Position: Position{Line: 1, Offset: 7, Column: 1}},
@@ -218,6 +278,57 @@ func TestParser_Parse(t *testing.T) {
 					OrderBy: []*SortSpecification{{Key: Token{Type: IDENT, Value: "created_date"}, Order: Token{Type: DESC}}, {Key: Token{Type: IDENT, Value: "rank"}}},
 				},
 			},
+			{
+				Tokens: []Token{ // select * from users group by group_id
+					{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+					{Type: ASTERISK, Position: Position{Line: 1, Offset: 7, Column: 1}},
+					{Type: FROM, Position: Position{Line: 1, Offset: 9, Column: 4}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 14, Column: 5}},
+					{Type: GROUPBY, Position: Position{Line: 1, Offset: 20, Column: 8}},
+					{Type: IDENT, Value: "group_id", Position: Position{Line: 1, Offset: 29, Column: 8}},
+					{Type: EOF, Position: Position{Line: 1, Offset: 37}},
+				},
+				Select: Select{
+					Table: TableExpression{
+						From: FromClause{
+							Table: []Token{{Type: IDENT, Value: "users"}},
+						},
+						Where:   WhereClause{},
+						GroupBy: GroupByClause([]Token{{Type: IDENT, Value: "group_id"}}),
+					},
+				},
+			},
+			{
+				Tokens: []Token{ // select * from users group by group_id having group_id > 10
+					{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+					{Type: ASTERISK, Position: Position{Line: 1, Offset: 7, Column: 1}},
+					{Type: FROM, Position: Position{Line: 1, Offset: 9, Column: 4}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 14, Column: 5}},
+					{Type: GROUPBY, Position: Position{Line: 1, Offset: 20, Column: 8}},
+					{Type: IDENT, Value: "group_id", Position: Position{Line: 1, Offset: 29, Column: 8}},
+					{Type: HAVING, Position: Position{Line: 1, Offset: 38, Column: 6}},
+					{Type: IDENT, Value: "group_id", Position: Position{Line: 1, Offset: 45, Column: 8}},
+					{Type: GTR, Position: Position{Line: 1, Offset: 54, Column: 1}},
+					{Type: INT, Position: Position{Line: 1, Offset: 56, Column: 2}},
+					{Type: EOF, Position: Position{Line: 1, Offset: 58}},
+				},
+				Select: Select{
+					Table: TableExpression{
+						From: FromClause{
+							Table: []Token{{Type: IDENT, Value: "users"}},
+						},
+						Where:   WhereClause{},
+						GroupBy: GroupByClause([]Token{{Type: IDENT, Value: "group_id"}}),
+						Having: HavingClause{
+							Cond: &ValueExpr{
+								Operator:   Token{Type: GTR},
+								LeftValue:  []Token{{Type: IDENT, Value: "group_d"}},
+								RightValue: []Token{{Type: INT, IntValue: 10}},
+							},
+						},
+					},
+				},
+			},
 		}
 
 		parser := Parser{}
@@ -235,6 +346,8 @@ func TestParser_Parse(t *testing.T) {
 			assertTokens(t, Tokens(c.Select.Table.From.Table), Tokens(s.Table.From.Table))
 			assertTokens(t, Tokens(c.Select.SelectList), Tokens(s.SelectList))
 			assertWhereClause(t, c.Select.Table.Where, s.Table.Where, i)
+			assertGroupByClause(t, c.Select.Table.GroupBy, s.Table.GroupBy, i)
+			assertHavingClause(t, c.Select.Table.Having, s.Table.Having, i)
 			assertOrderByClause(t, c.Select.OrderBy, s.OrderBy, i)
 		}
 	})

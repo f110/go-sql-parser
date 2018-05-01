@@ -82,13 +82,13 @@ type WhereClause struct {
 	Cond Expr
 }
 
-type GroupByClause struct {
-	Columns ColumnsList
+type GroupByClause ColumnList
+
+type HavingClause struct {
+	Cond Expr
 }
 
-type HavingClause struct{}
-
-type ColumnsList Tokens
+type ColumnList Tokens
 
 type TableList Tokens
 
@@ -237,13 +237,27 @@ func (p *Parser) parseTableExpression(tokens TokenReader) (TableExpression, erro
 	tableExpression := &TableExpression{From: fromClause}
 
 	if t, err := tokens.Peek(1); err == nil && t[0].Type == WHERE {
-		var whereClause WhereClause
-
-		whereClause, err = p.parseWhereClause(tokens)
+		whereClause, err := p.parseWhereClause(tokens)
 		if err != nil {
 			return TableExpression{}, err
 		}
 		tableExpression.Where = whereClause
+	}
+
+	if t, err := tokens.Peek(1); err == nil && t[0].Type == GROUPBY {
+		groupByClause, err := p.parseGroupByClause(tokens)
+		if err != nil {
+			return TableExpression{}, err
+		}
+		tableExpression.GroupBy = groupByClause
+	}
+
+	if t, err := tokens.Peek(1); err == nil && t[0].Type == HAVING {
+		havingClause, err := p.parseHavingClause(tokens)
+		if err != nil {
+			return TableExpression{}, err
+		}
+		tableExpression.Having = havingClause
 	}
 
 	return *tableExpression, nil
@@ -267,7 +281,7 @@ TableList:
 			break
 		}
 		switch t[0].Type {
-		case WHERE, ORDERBY:
+		case WHERE, ORDERBY, GROUPBY:
 			break TableList
 		}
 
@@ -279,6 +293,53 @@ TableList:
 	}
 
 	return FromClause{Table: tableList}, nil
+}
+
+func (p *Parser) parseGroupByClause(tokens TokenReader) (GroupByClause, error) {
+	if t, err := tokens.Peek(1); err != nil || t[0].Type != GROUPBY {
+		return GroupByClause([]Token{}), nil
+	} else {
+		tokens.Discard(1)
+	}
+
+	res := make(GroupByClause, 0)
+	for {
+		t, err := tokens.Peek(1)
+		if err != nil && err != io.EOF {
+			return GroupByClause([]Token{}), nil
+		}
+		if err == io.EOF {
+			break
+		}
+		if t[0].Type == HAVING {
+			break
+		}
+
+		tokens.Discard(1)
+		switch t[0].Type {
+		case COMMA, EOF:
+			continue
+		default:
+			res = append(res, t[0])
+		}
+	}
+
+	return res, nil
+}
+
+func (p *Parser) parseHavingClause(tokens TokenReader) (HavingClause, error) {
+	if t, err := tokens.Peek(1); err != nil || t[0].Type != HAVING {
+		return HavingClause{}, nil
+	} else {
+		tokens.Discard(1)
+	}
+
+	expr, err := p.parseSearchCondition(tokens)
+	if err != nil {
+		return HavingClause{}, ErrInvalidQuery
+	}
+
+	return HavingClause{Cond: expr}, nil
 }
 
 func (p *Parser) parseWhereClause(tokens TokenReader) (WhereClause, error) {
