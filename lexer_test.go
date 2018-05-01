@@ -100,6 +100,24 @@ func TestLexer_Scan(t *testing.T) {
 				},
 			},
 			{
+				"select * from users where id = 1 and age = 20",
+				[]Token{
+					{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+					{Type: ASTERISK, Position: Position{Line: 1, Offset: 7, Column: 1}},
+					{Type: FROM, Position: Position{Line: 1, Offset: 9, Column: 4}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 14, Column: 5}},
+					{Type: WHERE, Position: Position{Line: 1, Offset: 20, Column: 5}},
+					{Type: IDENT, Value: "id", Position: Position{Line: 1, Offset: 26, Column: 2}},
+					{Type: EQUAL, Position: Position{Line: 1, Offset: 29, Column: 1}},
+					{Type: INT, IntValue: 1, Position: Position{Line: 1, Offset: 31, Column: 1}},
+					{Type: AND, Position: Position{Line: 1, Offset: 33, Column: 3}},
+					{Type: IDENT, Value: "age", Position: Position{Line: 1, Offset: 37, Column: 3}},
+					{Type: EQUAL, Position: Position{Line: 1, Offset: 41, Column: 1}},
+					{Type: INT, IntValue: 20, Position: Position{Line: 1, Offset: 43, Column: 2}},
+					{Type: EOF, Position: Position{Line: 1, Offset: 45}},
+				},
+			},
+			{
 				"select * from users order by created_date desc",
 				[]Token{
 					{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
