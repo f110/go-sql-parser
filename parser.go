@@ -76,6 +76,13 @@ type TableExpression struct {
 
 type FromClause struct {
 	Table TableList
+	Join  JoinedTable
+}
+
+type JoinedTable struct {
+	Table TableList
+	Type  Tokens
+	Cond  Expr
 }
 
 type WhereClause struct {
@@ -280,8 +287,9 @@ TableList:
 		if err == io.EOF {
 			break
 		}
+
 		switch t[0].Type {
-		case WHERE, ORDERBY, GROUPBY:
+		case WHERE, ORDERBY, GROUPBY, LEFT, RIGHT:
 			break TableList
 		}
 
@@ -292,7 +300,62 @@ TableList:
 		}
 	}
 
-	return FromClause{Table: tableList}, nil
+	joinedTableList, err := p.parseJoinedTable(tokens)
+	if err != nil && err != io.EOF {
+		return FromClause{}, ErrInvalidQuery
+	}
+
+	return FromClause{Table: tableList, Join: joinedTableList}, nil
+}
+
+func (p *Parser) parseJoinedTable(tokens TokenReader) (JoinedTable, error) {
+	if t, err := tokens.Peek(1); err != nil {
+		return JoinedTable{}, err
+	} else {
+		switch t[0].Type {
+		case LEFT, RIGHT:
+		default:
+			return JoinedTable{}, err
+		}
+	}
+
+	joined := JoinedTable{}
+	left := make(Tokens, 0)
+JoinedTable:
+	for {
+		t, err := tokens.Peek(1)
+		if err != nil {
+			return JoinedTable{}, err
+		}
+
+		switch t[0].Type {
+		case LEFT, RIGHT, OUTER:
+			left = append(left, t[0])
+			tokens.Discard(1)
+		case JOIN:
+			joined.Type = left
+			tokens.Discard(1)
+			left = make(Tokens, 0)
+		case ON:
+			if len(left) > 0 {
+				joined.Table = append(joined.Table, left[0])
+			} else {
+				return JoinedTable{}, ErrInvalidQuery
+			}
+			tokens.Discard(1)
+			e, err := p.parseSearchCondition(tokens)
+			if err != nil {
+				return JoinedTable{}, err
+			}
+			joined.Cond = e
+			break JoinedTable
+		case IDENT:
+			left = append(left, t[0])
+			tokens.Discard(1)
+		}
+	}
+
+	return joined, nil
 }
 
 func (p *Parser) parseGroupByClause(tokens TokenReader) (GroupByClause, error) {

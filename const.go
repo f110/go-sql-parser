@@ -38,6 +38,7 @@ const (
 	JOIN
 	LEFT
 	RIGHT
+	FULL
 	OUTER
 	INNER
 	ON

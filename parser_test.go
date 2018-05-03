@@ -7,6 +7,23 @@ import (
 	"testing"
 )
 
+func assertFromClause(t *testing.T, expected FromClause, actual FromClause, i int) {
+	if len(expected.Table) != len(actual.Table) {
+		t.Fatalf("tokens %d: Expected length %d, but actual %d", i, len(expected.Table), len(actual.Table))
+	}
+
+	assertJoinedTable(t, expected.Join, actual.Join, i)
+}
+
+func assertJoinedTable(t *testing.T, expected JoinedTable, actual JoinedTable, i int) {
+	if len(expected.Table) != len(actual.Table) {
+		t.Fatalf("tokens %d: Expected length %d, but actual %d", i, len(expected.Table), len(actual.Table))
+	}
+
+	assertTokens(t, expected.Type, actual.Type)
+	assertExpr(t, expected.Cond, actual.Cond, i)
+}
+
 func assertGroupByClause(t *testing.T, expected GroupByClause, actual GroupByClause, i int) {
 	if len(expected) != len(actual) {
 		t.Fatalf("tokens %d: Expected length %d, but actual %d", i, len(expected), len(actual))
@@ -329,6 +346,43 @@ func TestParser_Parse(t *testing.T) {
 					},
 				},
 			},
+			{
+				Tokens: []Token{ // select * from users left outer join blog on users.id = blog.user_id
+					{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+					{Type: ASTERISK, Position: Position{Line: 1, Offset: 7, Column: 1}},
+					{Type: FROM, Position: Position{Line: 1, Offset: 9, Column: 4}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 14, Column: 5}},
+					{Type: LEFT, Position: Position{Line: 1, Offset: 20, Column: 4}},
+					{Type: OUTER, Position: Position{Line: 1, Offset: 25, Column: 5}},
+					{Type: JOIN, Position: Position{Line: 1, Offset: 31, Column: 4}},
+					{Type: IDENT, Value: "blog", Position: Position{Line: 1, Offset: 36, Column: 4}},
+					{Type: ON, Position: Position{Line: 1, Offset: 41, Column: 2}},
+					{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 44, Column: 5}},
+					{Type: PERIOD, Position: Position{Line: 1, Offset: 49, Column: 1}},
+					{Type: IDENT, Value: "id", Position: Position{Line: 1, Offset: 50, Column: 2}},
+					{Type: EQUAL, Position: Position{Line: 1, Offset: 53, Column: 1}},
+					{Type: IDENT, Value: "blog", Position: Position{Line: 1, Offset: 55, Column: 4}},
+					{Type: PERIOD, Position: Position{Line: 1, Offset: 59, Column: 1}},
+					{Type: IDENT, Value: "user_id", Position: Position{Line: 1, Offset: 60, Column: 7}},
+					{Type: EOF, Position: Position{Line: 1, Offset: 67}},
+				},
+				Select: Select{
+					Table: TableExpression{
+						From: FromClause{
+							Table: []Token{{Type: IDENT, Value: "users"}},
+							Join: JoinedTable{
+								Type:  []Token{{Type: LEFT}, {Type: OUTER}},
+								Table: []Token{{Type: IDENT, Value: "blog"}},
+								Cond: &ValueExpr{
+									Operator:   Token{Type: EQUAL},
+									LeftValue:  []Token{{Type: IDENT, Value: "users"}, {Type: PERIOD}, {Type: IDENT, Value: "id"}},
+									RightValue: []Token{{Type: IDENT, Value: "blog"}, {Type: PERIOD}, {Type: IDENT, Value: "user_id"}},
+								},
+							},
+						},
+					},
+				},
+			},
 		}
 
 		parser := Parser{}
@@ -343,8 +397,8 @@ func TestParser_Parse(t *testing.T) {
 				t.Fatalf("tokens %d, Expected Select but not", i)
 			}
 
-			assertTokens(t, Tokens(c.Select.Table.From.Table), Tokens(s.Table.From.Table))
 			assertTokens(t, Tokens(c.Select.SelectList), Tokens(s.SelectList))
+			assertFromClause(t, c.Select.Table.From, s.Table.From, i)
 			assertWhereClause(t, c.Select.Table.Where, s.Table.Where, i)
 			assertGroupByClause(t, c.Select.Table.GroupBy, s.Table.GroupBy, i)
 			assertHavingClause(t, c.Select.Table.Having, s.Table.Having, i)

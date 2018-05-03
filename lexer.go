@@ -219,6 +219,8 @@ func (lexer *Lexer) scanStatement(ctx *lexerCtx, s rune) (TokenType, interface{}
 		return LEFT, nil
 	case "right":
 		return RIGHT, nil
+	case "full":
+		return FULL, nil
 	case "inner":
 		return INNER, nil
 	case "outer":
