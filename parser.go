@@ -65,7 +65,12 @@ type SortSpecification struct {
 	Order Token
 }
 
-type SelectList []Token
+type SelectList []SelectExpr
+
+type SelectExpr struct {
+	Column string
+	Alias  string
+}
 
 type TableExpression struct {
 	From    FromClause
@@ -142,6 +147,11 @@ func (p *Parser) Parse(tokens TokenReader) (Query, error) {
 }
 
 func (p *Parser) parseSelect(tokens TokenReader) (Query, error) {
+	if t, err := tokens.Peek(1); err != nil || t[0].Type != SELECT {
+		return nil, ErrInvalidQuery
+	} else {
+		tokens.Discard(1)
+	}
 	query := NewSelect()
 
 	selectList, err := p.parseSelectList(tokens)
@@ -206,12 +216,14 @@ func (p *Parser) parseSortSpecification(t []Token) *SortSpecification {
 	if len(t) > 1 {
 		s.Order = t[1]
 	}
+
 	return s
 }
 
 func (p *Parser) parseSelectList(tokens TokenReader) (SelectList, error) {
 	res := make(SelectList, 0)
 
+	left := make(Tokens, 0)
 	for {
 		t, err := tokens.Peek(1)
 		if err != nil {
@@ -221,16 +233,43 @@ func (p *Parser) parseSelectList(tokens TokenReader) (SelectList, error) {
 			break
 		}
 		if t[0].Type == FROM {
+			e, err := p.parseSelectExpr(left)
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, e)
 			return res, nil
 		}
 
 		tokens.Discard(1)
 		switch t[0].Type {
-		case ASTERISK:
-			res = append(res, t[0])
-		case IDENT:
-			res = append(res, t[0])
+		case COMMA:
+			e, err := p.parseSelectExpr(left)
+			if err != nil {
+				return nil, err
+			}
+
+			res = append(res, e)
+			left = make(Tokens, 0)
+		default:
+			left = append(left, t[0])
 		}
+	}
+
+	return res, nil
+}
+
+func (p *Parser) parseSelectExpr(tokens Tokens) (SelectExpr, error) {
+	res := SelectExpr{}
+	if len(tokens) > 1 && tokens[1].Type == AS && tokens[2].Type == IDENT {
+		res.Alias = tokens[2].Value
+	}
+
+	switch tokens[0].Type {
+	case IDENT:
+		res.Column = tokens[0].Value
+	case ASTERISK:
+		res.Column = "*"
 	}
 
 	return res, nil
