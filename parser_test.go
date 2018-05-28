@@ -2,7 +2,6 @@ package parser
 
 import (
 	"io"
-	"log"
 	"reflect"
 	"testing"
 )
@@ -13,6 +12,9 @@ func assertSelectList(t *testing.T, expected SelectList, actual SelectList, i in
 	}
 
 	for k, c := range expected {
+		if c.Asterisk == true && actual[k].Asterisk == false {
+			t.Fatalf("tokens %d: Expected column asterisk, but got %s", i, actual[k].Column)
+		}
 		if c.Column != actual[k].Column {
 			t.Fatalf("tokens %d: Expected column %s, but got %s", i, c.Column, actual[k].Column)
 		}
@@ -25,6 +27,10 @@ func assertSelectList(t *testing.T, expected SelectList, actual SelectList, i in
 func assertFromClause(t *testing.T, expected FromClause, actual FromClause, i int) {
 	if len(expected.Table) != len(actual.Table) {
 		t.Fatalf("tokens %d: Expected length %d, but actual %d", i, len(expected.Table), len(actual.Table))
+	}
+
+	for k, e := range expected.Table {
+		assertTableReference(t, e, actual.Table[k], i)
 	}
 
 	assertJoinedTable(t, expected.Join, actual.Join, i)
@@ -69,32 +75,53 @@ func assertOrderByClause(t *testing.T, expected OrderByClause, actual OrderByCla
 	}
 }
 
+func assertWhereClause(t *testing.T, expected WhereClause, actual WhereClause, i int) {
+	assertExpr(t, expected.Cond, actual.Cond, i)
+}
+
+func assertTableReference(t *testing.T, expected TableReference, actual TableReference, i int) {
+	if expected.Name != actual.Name {
+		t.Fatalf("tokens %d: Expected name is %s, but got %s", i, expected.Name, actual.Name)
+	}
+	if expected.Alias != "" && expected.Alias != actual.Alias {
+		t.Fatalf("tokens %d: Expected alias is %s, but got %s", i, expected.Alias, actual.Name)
+	}
+}
+
 func assertExpr(t *testing.T, expected Expr, actual Expr, i int) {
 	if reflect.TypeOf(expected) != reflect.TypeOf(actual) {
 		t.Fatalf("tokens %d: Expected %v, but actual %v", i, reflect.TypeOf(expected), reflect.TypeOf(actual))
 	}
-	if v, ok := expected.(*ValueExpr); ok {
-		assertValueExpr(t, v, actual.(*ValueExpr))
+	if v, ok := expected.(*ComparisonExpr); ok {
+		assertComparisonExpr(t, v, actual.(*ComparisonExpr))
 	}
 	if v, ok := expected.(*BooleanTerm); ok {
 		assertBooleanTerm(t, v, actual.(*BooleanTerm))
 	}
 }
 
-func assertWhereClause(t *testing.T, expected WhereClause, actual WhereClause, i int) {
-	assertExpr(t, expected.Cond, actual.Cond, i)
+func assertComparisonExpr(t *testing.T, expected *ComparisonExpr, actual *ComparisonExpr) {
+	assertValueExpr(t, expected.LeftValue, actual.LeftValue)
+	assertValueExpr(t, expected.RightValue, actual.RightValue)
 }
 
-func assertValueExpr(t *testing.T, expected *ValueExpr, actual *ValueExpr) {
-	if v, ok := expected.LeftValue.(Tokens); ok {
-		for i, token := range v {
-			assertToken(t, token, actual.LeftValue.(Tokens)[i])
-		}
+func assertValueExpr(t *testing.T, expected ValueExpr, actual ValueExpr) {
+	if expected.Type != actual.Type {
+		t.Fatalf("Expected %v but got %v", expected.Type, actual.Type)
 	}
 
-	if v, ok := expected.RightValue.(Tokens); ok {
-		for i, token := range v {
-			assertToken(t, token, actual.RightValue.(Tokens)[i])
+	switch expected.Type {
+	case ValueTypeString:
+		if expected.StringValue != actual.StringValue {
+			t.Fatalf("Expected %s but got %s", expected.StringValue, actual.StringValue)
+		}
+	case ValueTypeInt:
+		if expected.IntValue != actual.IntValue {
+			t.Fatalf("Expected int value %d but got %d", expected.IntValue, actual.IntValue)
+		}
+	case ValueTypeParameter:
+		if reflect.DeepEqual(expected.Identifiers, actual.Identifiers) == false {
+			t.Fatalf("Expected %v but got %v", expected.Identifiers, actual.Identifiers)
 		}
 	}
 }
@@ -104,15 +131,15 @@ func assertBooleanTerm(t *testing.T, expected *BooleanTerm, actual *BooleanTerm)
 		t.Fatalf("Expected %v but actual %v", expected.Boolean.Type, actual.Boolean.Type)
 	}
 
-	if v, ok := expected.Left.(*ValueExpr); ok {
-		assertValueExpr(t, v, actual.Left.(*ValueExpr))
+	if v, ok := expected.Left.(*ComparisonExpr); ok {
+		assertComparisonExpr(t, v, actual.Left.(*ComparisonExpr))
 	}
 	if v, ok := expected.Left.(*BooleanTerm); ok {
 		assertBooleanTerm(t, v, actual.Left.(*BooleanTerm))
 	}
 
-	if v, ok := expected.Right.(*ValueExpr); ok {
-		assertValueExpr(t, v, actual.Right.(*ValueExpr))
+	if v, ok := expected.Right.(*ComparisonExpr); ok {
+		assertComparisonExpr(t, v, actual.Right.(*ComparisonExpr))
 	}
 	if v, ok := expected.Right.(*BooleanTerm); ok {
 		assertBooleanTerm(t, v, actual.Right.(*BooleanTerm))
@@ -178,9 +205,9 @@ func TestParser_parseExpression(t *testing.T) {
 	//var tokens = []Token{{Type: IDENT, Value: "A"}, {Type: AND}, {Type: LPAREN}, {Type: IDENT, Value: "B"}, {Type: AND}, {Type: IDENT, Value: "C"}, {Type: RPAREN}} // invalid
 	//var tokens = []Token{{Type: LPAREN}, {Type: IDENT, Value: "B"}, {Type: OR}, {Type: IDENT, Value: "C"}, {Type: RPAREN}, {Type: AND}, {Type: IDENT, Value: "D"}}
 	//var tokens = []Token{{Type: IDENT, Value: "A"}, {Type: AND}, {Type: LPAREN}, {Type: LPAREN}, {Type: IDENT, Value: "B"}, {Type: OR}, {Type: IDENT, Value: "C"}, {Type: RPAREN}, {Type: AND}, {Type: IDENT, Value: "D"}, {Type: RPAREN}}
-	var tokens = []Token{{Type: IDENT, Value: "id"}, {Type: EQUAL}, {Type: INT, IntValue: 1}, {Type: AND}, {Type: IDENT, Value: "age"}, {Type: EQUAL}, {Type: INT, IntValue: 20}}
+	//var tokens = []Token{{Type: IDENT, Value: "id"}, {Type: EQUAL}, {Type: INT, IntValue: 1}, {Type: AND}, {Type: IDENT, Value: "age"}, {Type: EQUAL}, {Type: INT, IntValue: 20}}
 
-	parser := Parser{}
-	res, _ := parser.parseSearchCondition(NewTokensReader(tokens))
-	log.Print(res.(*BooleanTerm))
+	//parser := Parser{}
+	//res, _ := parser.parseSearchCondition(NewTokensReader(tokens))
+	//log.Print(res.(*BooleanTerm))
 }

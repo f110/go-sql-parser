@@ -44,6 +44,12 @@ var (
 //	|	<distinct predicate>
 //	|	<type predicate>
 // <comparison predicate> ::= <row value expression> <comp op> <row value expression>
+// <row value expression> ::= <row value special case> | <row value constructor>
+// <row value constructor> ::=
+//		<row value constructor element>
+//	|	[ ROW ] <left paren> <row value constructor element list> <right paren>
+//	|	<row subquery>
+// <row value constructor element> ::= <value expression>
 // <between predicate> ::=
 //		<row value expression> [ NOT ] BETWEEN [ ASYMMETRIC | SYMMETRIC ]
 //		<row value expression> AND <row value expression>
@@ -68,8 +74,9 @@ type SortSpecification struct {
 type SelectList []SelectExpr
 
 type SelectExpr struct {
-	Column string
-	Alias  string
+	Column   string
+	Alias    string
+	Asterisk bool
 }
 
 type TableExpression struct {
@@ -102,7 +109,12 @@ type HavingClause struct {
 
 type ColumnList Tokens
 
-type TableList Tokens
+type TableList []TableReference
+
+type TableReference struct {
+	Name  string
+	Alias string
+}
 
 type Expr interface{}
 
@@ -114,10 +126,34 @@ type BooleanTerm struct {
 	Right   Expr
 }
 
+const (
+	ComparisonOperatorEqual = iota
+	ComparisonOperatorLessThan
+	ComparisonOperatorGreaterThan
+)
+
+type ComparisonOperator int
+
+type ComparisonExpr struct {
+	Operator   ComparisonOperator
+	LeftValue  ValueExpr
+	RightValue ValueExpr
+}
+
+const (
+	ValueTypeInt = iota
+	ValueTypeString
+	ValueTypeParameter
+	ValueTypeDynamicParameter // ?
+)
+
+type ValueType int
+
 type ValueExpr struct {
-	Operator   Token
-	LeftValue  Expr
-	RightValue Expr
+	Type        ValueType
+	IntValue    int
+	StringValue string
+	Identifiers []string
 }
 
 type RawValue struct {
@@ -269,7 +305,7 @@ func (p *Parser) parseSelectExpr(tokens Tokens) (SelectExpr, error) {
 	case IDENT:
 		res.Column = tokens[0].Value
 	case ASTERISK:
-		res.Column = "*"
+		res.Asterisk = true
 	}
 
 	return res, nil
@@ -335,7 +371,7 @@ TableList:
 		tokens.Discard(1)
 		switch t[0].Type {
 		case IDENT:
-			tableList = append(tableList, t[0])
+			tableList = append(tableList, TableReference{Name: t[0].Value})
 		}
 	}
 
@@ -377,7 +413,7 @@ JoinedTable:
 			left = make(Tokens, 0)
 		case ON:
 			if len(left) > 0 {
-				joined.Table = append(joined.Table, left[0])
+				joined.Table = append(joined.Table, TableReference{Name: left[0].Value})
 			} else {
 				return JoinedTable{}, ErrInvalidQuery
 			}
@@ -540,15 +576,31 @@ func (p *Parser) parseBooleanValueExpression(tokens TokenReader) (Expr, error) {
 		switch t[0].Type {
 		case EQUAL, LSS, GTR:
 			l, err := p.parseBooleanValueExpression(NewTokensReader(left))
+			if err != nil {
+				return &ComparisonExpr{}, err
+			}
 			tokens.Discard(1)
 			r, err := p.parseBooleanValueExpression(tokens)
-			_ = err
-			v := &ValueExpr{
-				Operator:   t[0],
-				LeftValue:  l,
-				RightValue: r,
+			if err != nil {
+				return &ComparisonExpr{}, err
+			}
+			o := ComparisonOperator(ComparisonOperatorEqual)
+			switch t[0].Type {
+			case LSS:
+				o = ComparisonOperatorLessThan
+			case GTR:
+				o = ComparisonOperatorGreaterThan
+			}
+
+			v := &ComparisonExpr{
+				Operator:   o,
+				LeftValue:  p.parseValueExpr(l.(Tokens)),
+				RightValue: p.parseValueExpr(r.(Tokens)),
 			}
 			return v, nil
+		case EOF:
+			tokens.Discard(1)
+			return left, nil
 		}
 
 		left = append(left, t[0])
@@ -556,6 +608,28 @@ func (p *Parser) parseBooleanValueExpression(tokens TokenReader) (Expr, error) {
 	}
 
 	return left, nil
+}
+
+func (p *Parser) parseValueExpr(tokens Tokens) ValueExpr {
+	if len(tokens) == 1 {
+		switch tokens[0].Type {
+		case IDENT:
+			return ValueExpr{Type: ValueTypeString, StringValue: tokens[0].Value}
+		case INT:
+			return ValueExpr{Type: ValueTypeInt, IntValue: tokens[0].IntValue}
+		case QUESTION:
+			return ValueExpr{Type: ValueTypeDynamicParameter}
+		}
+	} else {
+		if tokens[1].Type == PERIOD {
+			identifies := make([]string, 0, len(tokens)+1)
+			for i := 0; i < len(tokens); i += 2 {
+				identifies = append(identifies, tokens[i].Value)
+			}
+			return ValueExpr{Type: ValueTypeParameter, Identifiers: identifies}
+		}
+	}
+	return ValueExpr{}
 }
 
 func (p *Parser) parserPredicate(token Token) Expr {

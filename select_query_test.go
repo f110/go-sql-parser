@@ -7,7 +7,7 @@ type TestQuery struct {
 }
 
 var TestSelectQuery = []TestQuery{
-	{
+	{ // # 0
 		Query: "select * from test",
 		Tokens: []Token{
 			{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
@@ -16,9 +16,12 @@ var TestSelectQuery = []TestQuery{
 			{Type: IDENT, Value: "test", Position: Position{Line: 1, Offset: 14, Column: 4}},
 			{Type: EOF, Position: Position{Line: 1, Offset: 18}},
 		},
-		Ast: Select{Table: TableExpression{From: FromClause{Table: []Token{{Type: IDENT, Value: "test"}}}}, SelectList: []SelectExpr{{Column: "*"}}},
+		Ast: Select{
+			SelectList: []SelectExpr{{Asterisk: true}},
+			Table:      TableExpression{From: FromClause{Table: []TableReference{{Name: "test"}}}},
+		},
 	},
-	{
+	{ // # 1
 		Query: "select * from `test`",
 		Tokens: []Token{
 			{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
@@ -27,9 +30,12 @@ var TestSelectQuery = []TestQuery{
 			{Type: IDENT, Value: "`test`", Position: Position{Line: 1, Offset: 14, Column: 6}},
 			{Type: EOF, Position: Position{Line: 1, Offset: 20}},
 		},
-		Ast: Select{Table: TableExpression{From: FromClause{Table: []Token{{Type: IDENT, Value: "`test`"}}}}, SelectList: []SelectExpr{{Column: "*"}}},
+		Ast: Select{
+			SelectList: []SelectExpr{{Asterisk: true}},
+			Table:      TableExpression{From: FromClause{Table: []TableReference{{Name: "`test`"}}}},
+		},
 	},
-	{
+	{ // # 2
 		Query: "select    *    from    test",
 		Tokens: []Token{
 			{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
@@ -38,7 +44,10 @@ var TestSelectQuery = []TestQuery{
 			{Type: IDENT, Value: "test", Position: Position{Line: 1, Offset: 23, Column: 4}},
 			{Type: EOF, Position: Position{Line: 1, Offset: 27}},
 		},
-		Ast: Select{Table: TableExpression{From: FromClause{Table: []Token{{Type: IDENT, Value: "test"}}}}, SelectList: []SelectExpr{{Column: "*"}}},
+		Ast: Select{
+			SelectList: []SelectExpr{{Asterisk: true}},
+			Table:      TableExpression{From: FromClause{Table: []TableReference{{Name: "test"}}}},
+		},
 	},
 	{
 		Query: "SELECT id,age from users",
@@ -51,7 +60,12 @@ var TestSelectQuery = []TestQuery{
 			{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 19, Column: 5}},
 			{Type: EOF, Position: Position{Line: 1, Offset: 24}},
 		},
-		Ast: Select{Table: TableExpression{From: FromClause{Table: []Token{{Type: IDENT, Value: "users"}}}}, SelectList: []SelectExpr{{Column: "id"}, {Column: "age"}}},
+		Ast: Select{
+			SelectList: []SelectExpr{{Column: "id"}, {Column: "age"}},
+			Table: TableExpression{
+				From: FromClause{Table: []TableReference{{Name: "users"}}},
+			},
+		},
 	},
 	{
 		Query: "select * from users where id = 1",
@@ -69,15 +83,15 @@ var TestSelectQuery = []TestQuery{
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 				},
-				Where: WhereClause{Cond: &ValueExpr{
-					Operator:   Token{Type: EQUAL},
-					LeftValue:  []Token{{Type: IDENT, Value: "id"}},
-					RightValue: []Token{{Type: INT, IntValue: 1}},
+				Where: WhereClause{Cond: &ComparisonExpr{
+					Operator:   ComparisonOperatorEqual,
+					LeftValue:  ValueExpr{Type: ValueTypeString, StringValue: "id"},
+					RightValue: ValueExpr{Type: ValueTypeInt, IntValue: 1},
 				}},
 			},
-			SelectList: []SelectExpr{{Column: "*"}},
+			SelectList: []SelectExpr{{Asterisk: true}},
 		},
 	},
 	{
@@ -100,25 +114,25 @@ var TestSelectQuery = []TestQuery{
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 				},
 				Where: WhereClause{
 					Cond: &BooleanTerm{
 						Boolean: Token{Type: AND},
-						Left: &ValueExpr{
-							Operator:   Token{Type: EQUAL},
-							LeftValue:  []Token{{Type: IDENT, Value: "id"}},
-							RightValue: []Token{{Type: INT, IntValue: 1}},
+						Left: &ComparisonExpr{
+							Operator:   ComparisonOperatorEqual,
+							LeftValue:  ValueExpr{Type: ValueTypeString, StringValue: "id"},
+							RightValue: ValueExpr{Type: ValueTypeInt, IntValue: 1},
 						},
-						Right: &ValueExpr{
-							Operator:   Token{Type: EQUAL},
-							LeftValue:  []Token{{Type: IDENT, Value: "age"}},
-							RightValue: []Token{{Type: INT, IntValue: 20}},
+						Right: &ComparisonExpr{
+							Operator:   ComparisonOperatorEqual,
+							LeftValue:  ValueExpr{Type: ValueTypeString, StringValue: "age"},
+							RightValue: ValueExpr{Type: ValueTypeInt, IntValue: 20},
 						},
 					},
 				},
 			},
-			SelectList: []SelectExpr{{Column: "*"}},
+			SelectList: []SelectExpr{{Asterisk: true}},
 		},
 	},
 	{
@@ -141,25 +155,25 @@ var TestSelectQuery = []TestQuery{
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 				},
 				Where: WhereClause{
 					Cond: &BooleanTerm{
 						Boolean: Token{Type: AND},
-						Left: &ValueExpr{
-							Operator:   Token{Type: GTR},
-							LeftValue:  []Token{{Type: IDENT, Value: "id"}},
-							RightValue: []Token{{Type: INT, IntValue: 1}},
+						Left: &ComparisonExpr{
+							Operator:   ComparisonOperatorGreaterThan,
+							LeftValue:  ValueExpr{Type: ValueTypeString, StringValue: "id"},
+							RightValue: ValueExpr{Type: ValueTypeInt, IntValue: 10},
 						},
-						Right: &ValueExpr{
-							Operator:   Token{Type: GTR},
-							LeftValue:  []Token{{Type: IDENT, Value: "age"}},
-							RightValue: []Token{{Type: INT, IntValue: 20}},
+						Right: &ComparisonExpr{
+							Operator:   ComparisonOperatorGreaterThan,
+							LeftValue:  ValueExpr{Type: ValueTypeString, StringValue: "age"},
+							RightValue: ValueExpr{Type: ValueTypeInt, IntValue: 20},
 						},
 					},
 				},
 			},
-			SelectList: []SelectExpr{{Column: "*"}},
+			SelectList: []SelectExpr{{Asterisk: true}},
 		},
 	},
 	{
@@ -177,11 +191,11 @@ var TestSelectQuery = []TestQuery{
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 				},
 				Where: WhereClause{},
 			},
-			SelectList: []SelectExpr{{Column: "*"}},
+			SelectList: []SelectExpr{{Asterisk: true}},
 			OrderBy:    []*SortSpecification{{Key: Token{Type: IDENT, Value: "created_date"}, Order: Token{Type: DESC}}},
 		},
 	},
@@ -202,11 +216,11 @@ var TestSelectQuery = []TestQuery{
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 				},
 				Where: WhereClause{},
 			},
-			SelectList: []SelectExpr{{Column: "*"}},
+			SelectList: []SelectExpr{{Asterisk: true}},
 			OrderBy:    []*SortSpecification{{Key: Token{Type: IDENT, Value: "created_date"}, Order: Token{Type: DESC}}, {Key: Token{Type: IDENT, Value: "rank"}}},
 		},
 	},
@@ -224,12 +238,12 @@ var TestSelectQuery = []TestQuery{
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 				},
 				Where:   WhereClause{},
 				GroupBy: GroupByClause([]Token{{Type: IDENT, Value: "group_id"}}),
 			},
-			SelectList: []SelectExpr{{Column: "*"}},
+			SelectList: []SelectExpr{{Asterisk: true}},
 		},
 	},
 	{
@@ -244,25 +258,25 @@ var TestSelectQuery = []TestQuery{
 			{Type: HAVING, Position: Position{Line: 1, Offset: 38, Column: 6}},
 			{Type: IDENT, Value: "group_id", Position: Position{Line: 1, Offset: 45, Column: 8}},
 			{Type: GTR, Position: Position{Line: 1, Offset: 54, Column: 1}},
-			{Type: INT, Position: Position{Line: 1, Offset: 56, Column: 2}},
+			{Type: INT, IntValue: 10, Position: Position{Line: 1, Offset: 56, Column: 2}},
 			{Type: EOF, Position: Position{Line: 1, Offset: 58}},
 		},
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 				},
 				Where:   WhereClause{},
 				GroupBy: GroupByClause([]Token{{Type: IDENT, Value: "group_id"}}),
 				Having: HavingClause{
-					Cond: &ValueExpr{
-						Operator:   Token{Type: GTR},
-						LeftValue:  []Token{{Type: IDENT, Value: "group_d"}},
-						RightValue: []Token{{Type: INT, IntValue: 10}},
+					Cond: &ComparisonExpr{
+						Operator:   ComparisonOperatorGreaterThan,
+						LeftValue:  ValueExpr{Type: ValueTypeString, StringValue: "group_id"},
+						RightValue: ValueExpr{Type: ValueTypeInt, IntValue: 10},
 					},
 				},
 			},
-			SelectList: []SelectExpr{{Column: "*"}},
+			SelectList: []SelectExpr{{Asterisk: true}},
 		},
 	},
 	{
@@ -289,19 +303,19 @@ var TestSelectQuery = []TestQuery{
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 					Join: JoinedTable{
 						Type:  []Token{{Type: LEFT}, {Type: OUTER}},
-						Table: []Token{{Type: IDENT, Value: "blog"}},
-						Cond: &ValueExpr{
-							Operator:   Token{Type: EQUAL},
-							LeftValue:  []Token{{Type: IDENT, Value: "users"}, {Type: PERIOD}, {Type: IDENT, Value: "id"}},
-							RightValue: []Token{{Type: IDENT, Value: "blog"}, {Type: PERIOD}, {Type: IDENT, Value: "user_id"}},
+						Table: []TableReference{{Name: "blog"}},
+						Cond: &ComparisonExpr{
+							Operator:   ComparisonOperatorEqual,
+							LeftValue:  ValueExpr{Type: ValueTypeParameter, Identifiers: []string{"users", "id"}},
+							RightValue: ValueExpr{Type: ValueTypeParameter, Identifiers: []string{"blog", "user_id"}},
 						},
 					},
 				},
 			},
-			SelectList: []SelectExpr{{Column: "*"}},
+			SelectList: []SelectExpr{{Asterisk: true}},
 		},
 	},
 	{
@@ -328,22 +342,22 @@ var TestSelectQuery = []TestQuery{
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 					Join: JoinedTable{
 						Type:  []Token{{Type: RIGHT}, {Type: OUTER}},
-						Table: []Token{{Type: IDENT, Value: "blog"}},
-						Cond: &ValueExpr{
-							Operator:   Token{Type: EQUAL},
-							LeftValue:  []Token{{Type: IDENT, Value: "users"}, {Type: PERIOD}, {Type: IDENT, Value: "id"}},
-							RightValue: []Token{{Type: IDENT, Value: "blog"}, {Type: PERIOD}, {Type: IDENT, Value: "user_id"}},
+						Table: []TableReference{{Name: "blog"}},
+						Cond: &ComparisonExpr{
+							Operator:   ComparisonOperatorEqual,
+							LeftValue:  ValueExpr{Type: ValueTypeParameter, Identifiers: []string{"users", "id"}},
+							RightValue: ValueExpr{Type: ValueTypeParameter, Identifiers: []string{"blog", "user_id"}},
 						},
 					},
 				},
 			},
-			SelectList: []SelectExpr{{Column: "*"}},
+			SelectList: []SelectExpr{{Asterisk: true}},
 		},
 	},
-	{
+	{ // # 13
 		Query: "SELECT id as foo from users",
 		Tokens: []Token{
 			{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
@@ -357,10 +371,39 @@ var TestSelectQuery = []TestQuery{
 		Ast: Select{
 			Table: TableExpression{
 				From: FromClause{
-					Table: []Token{{Type: IDENT, Value: "users"}},
+					Table: []TableReference{{Name: "users"}},
 				},
 			},
 			SelectList: []SelectExpr{{Column: "id", Alias: "foo"}},
+		},
+	},
+	{ // # 14
+		Query: "SELECT * FROM users WHERE name = ?",
+		Tokens: []Token{
+			{Type: SELECT, Position: Position{Line: 1, Offset: 0, Column: 6}},
+			{Type: ASTERISK, Position: Position{Line: 1, Offset: 7, Column: 1}},
+			{Type: FROM, Position: Position{Line: 1, Offset: 9, Column: 4}},
+			{Type: IDENT, Value: "users", Position: Position{Line: 1, Offset: 14, Column: 5}},
+			{Type: WHERE, Position: Position{Line: 1, Offset: 20, Column: 5}},
+			{Type: IDENT, Value: "name", Position: Position{Line: 1, Offset: 26, Column: 4}},
+			{Type: EQUAL, Position: Position{Line: 1, Offset: 31, Column: 1}},
+			{Type: QUESTION, Position: Position{Line: 1, Offset: 33, Column: 1}},
+			{Type: EOF, Position: Position{Line: 1, Offset: 35}},
+		},
+		Ast: Select{
+			SelectList: []SelectExpr{{Asterisk: true}},
+			Table: TableExpression{
+				From: FromClause{
+					Table: []TableReference{{Name: "users"}},
+				},
+				Where: WhereClause{
+					Cond: &ComparisonExpr{
+						Operator:   ComparisonOperatorEqual,
+						LeftValue:  ValueExpr{Type: ValueTypeString, StringValue: "name"},
+						RightValue: ValueExpr{Type: ValueTypeDynamicParameter},
+					},
+				},
+			},
 		},
 	},
 }

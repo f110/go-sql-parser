@@ -124,6 +124,9 @@ func (lexer *Lexer) Scan() (Token, error) {
 	case ')':
 		lexer.ctx.discard()
 		typ = RPAREN
+	case '?':
+		lexer.ctx.discard()
+		typ = QUESTION
 	default:
 		typ, value = lexer.scanStatement(lexer.ctx, r)
 	}

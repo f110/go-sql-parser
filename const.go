@@ -22,6 +22,7 @@ const (
 	EQUAL    // =
 	LSS      // <
 	GTR      // >
+	QUESTION // ?
 
 	SELECT
 	INSERT
